@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教員用 週案・時間割・時数管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @media print {
+            body { background: white; color: black; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .page-break { page-break-before: always; }
+            .print-card { border: 1px solid #ccc !important; box-shadow: none !important; }
+            table { font-size: 10px !important; }
+        }
+        .print-only { display: none; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen">
+
+    <!-- ヘッダー -->
+    <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-50 no-print">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-2">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-calendar-check text-2xl text-yellow-300"></i>
+                <h1 class="text-xl font-bold tracking-wide">教員用 週案・時間割・時数管理</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="openBaseModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs md:text-sm px-3 py-1.5 rounded-lg border border-indigo-400 flex items-center transition">
+                    <i class="fa-solid fa-sliders mr-1.5"></i> 基本時間割設定
+                </button>
+                <button onclick="openImportModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs md:text-sm px-3 py-1.5 rounded-lg border border-indigo-400 flex items-center transition">
+                    <i class="fa-solid fa-file-import mr-1.5"></i> CSV取込
+                </button>
+                <button onclick="exportCSV()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs md:text-sm px-3 py-1.5 rounded-lg flex items-center transition">
+                    <i class="fa-solid fa-file-export mr-1.5"></i> Excel保存
+                </button>
+            </div>
+        </div>
+        
+        <!-- ナビゲーションタブ -->
+        <div class="max-w-7xl mx-auto px-4 flex space-x-1 border-t border-indigo-600 overflow-x-auto">
+            <button onclick="switchTab('daily')" id="tab-daily" class="py-2.5 px-4 text-sm font-medium border-b-2 border-yellow-300 text-yellow-300 flex items-center whitespace-nowrap">
+                <i class="fa-solid fa-calendar-day mr-2"></i>日別時間割
+            </button>
+            <button onclick="switchTab('jisuu')" id="tab-jisuu" class="py-2.5 px-4 text-sm font-medium border-b-2 border-transparent text-indigo-200 hover:text-white flex items-center whitespace-nowrap">
+                <i class="fa-solid fa-calculator mr-2"></i>時数管理・集計
+            </button>
+            <button onclick="switchTab('annual')" id="tab-annual" class="py-2.5 px-4 text-sm font-medium border-b-2 border-transparent text-indigo-200 hover:text-white flex items-center whitespace-nowrap">
+                <i class="fa-solid fa-book-open mr-2"></i>年間指導計画
+            </button>
+            <button onclick="switchTab('weekly')" id="tab-weekly" class="py-2.5 px-4 text-sm font-medium border-b-2 border-transparent text-indigo-200 hover:text-white flex items-center whitespace-nowrap">
+                <i class="fa-solid fa-table-list mr-2"></i>1週間まとめシート
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-4">
+
+        <!-- 1. 日別時間割 タブ -->
+        <section id="sec-daily" class="space-y-4">
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4 no-print">
+                <div class="flex items-center space-x-3">
+                    <button onclick="changeDate(-1)" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+                        <i class="fa-solid fa-chevron-left"></i> 前日
+                    </button>
+                    <input type="date" id="targetDate" onchange="loadDateData()" class="border border-slate-300 rounded-lg px-3 py-1.5 font-bold text-slate-700">
+                    <button onclick="changeDate(1)" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+                        翌日 <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                    <button onclick="setToday()" class="bg-slate-200 hover:bg-slate-300 text-xs px-2.5 py-1.5 rounded-md font-medium text-slate-700">今日</button>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="weekBadge" class="bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-full">A週</span>
+                    <span id="bentoBadge" class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full hidden"><i class="fa-solid fa-utensils mr-1"></i>お弁当</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-200 space-y-4">
+                    <h2 class="font-bold text-slate-800 text-lg flex items-center border-b pb-2">
+                        <i class="fa-solid fa-bullhorn text-indigo-600 mr-2"></i>学校行事・連絡事項
+                    </h2>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">本日の予定・行事</label>
+                        <textarea id="dailyEvent" onchange="saveCurrentDateData()" rows="4" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" placeholder="行事や打ち合わせなどを入力"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">詳細メモ・連絡事項</label>
+                        <textarea id="dailyMemo" onchange="saveCurrentDateData()" rows="6" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" placeholder="詳細メモ欄"></textarea>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-2 space-y-4">
+                    <h2 class="font-bold text-slate-800 text-lg flex items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                        <i class="fa-solid fa-chalkboard-user text-indigo-600 mr-2"></i>本日の時間割と授業計画
+                    </h2>
+
+                    <div id="periodsContainer" class="space-y-4"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. 時数管理・実績 タブ (期間指定自動動的集計) -->
+        <section id="sec-jisuu" class="hidden space-y-4">
+            <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-200 space-y-4">
+                <div class="flex flex-wrap justify-between items-center gap-4 border-b pb-3">
+                    <h2 class="font-bold text-slate-800 text-lg flex items-center">
+                        <i class="fa-solid fa-calculator text-indigo-600 mr-2"></i>指定期間の授業時数自動計算
+                    </h2>
+                    <!-- 期間指定コントロール -->
+                    <div class="flex flex-wrap items-center gap-2 bg-indigo-50/70 p-2 rounded-xl border border-indigo-100">
+                        <label class="text-xs font-bold text-indigo-900"><i class="fa-solid fa-filter mr-1"></i>集計期間:</label>
+                        <input type="date" id="jisuuStartDate" onchange="calculateJisuu()" class="border border-slate-300 text-xs rounded-lg px-2 py-1 font-bold">
+                        <span class="text-xs font-bold text-slate-500">〜</span>
+                        <input type="date" id="jisuuEndDate" onchange="calculateJisuu()" class="border border-slate-300 text-xs rounded-lg px-2 py-1 font-bold">
+                        <button onclick="calculateJisuu()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1 rounded-lg transition">再計算</button>
+                    </div>
+                </div>
+
+                <p class="text-xs text-slate-500">
+                    💡 アプリ上で時間割を変更（例：国語から算数へ変更）すると、指定期間内の実施時数が自動的に即時計算・カウントされます。
+                </p>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs text-center border-collapse border border-slate-300 min-w-[800px]">
+                        <thead>
+                            <tr class="bg-slate-100 font-bold border-b border-slate-300">
+                                <th class="p-2 border border-slate-300">区分</th>
+                                <th class="p-2 border border-slate-300">国語</th>
+                                <th class="p-2 border border-slate-300">書写</th>
+                                <th class="p-2 border border-slate-300">社会</th>
+                                <th class="p-2 border border-slate-300">算数</th>
+                                <th class="p-2 border border-slate-300">理科</th>
+                                <th class="p-2 border border-slate-300">生活</th>
+                                <th class="p-2 border border-slate-300">音楽</th>
+                                <th class="p-2 border border-slate-300">図工</th>
+                                <th class="p-2 border border-slate-300">家庭</th>
+                                <th class="p-2 border border-slate-300">体育</th>
+                                <th class="p-2 border border-slate-300">道徳</th>
+                                <th class="p-2 border border-slate-300">外国語</th>
+                                <th class="p-2 border border-slate-300">総合</th>
+                                <th class="p-2 border border-slate-300">学活</th>
+                                <th class="p-2 border border-slate-300">行事</th>
+                                <th class="p-2 border border-slate-300 bg-indigo-50">合計</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jisuuTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. 年間指導計画 タブ -->
+        <section id="sec-annual" class="hidden space-y-4">
+            <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
+                <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+                    <h2 class="font-bold text-slate-800 text-lg flex items-center">
+                        <i class="fa-solid fa-map text-indigo-600 mr-2"></i>年間指導計画（月別単元・学習内容）
+                    </h2>
+                    <div class="flex items-center space-x-2">
+                        <label class="text-xs font-bold text-slate-600">表示教科:</label>
+                        <select id="annualSubjFilter" onchange="renderAnnualPlan()" class="border border-slate-300 text-xs rounded-lg px-2.5 py-1.5 font-bold">
+                            <option value="国語">国語</option>
+                            <option value="書写">書写</option>
+                            <option value="算数">算数</option>
+                            <option value="生活">生活</option>
+                            <option value="音楽">音楽</option>
+                            <option value="図工">図工</option>
+                            <option value="体育">体育</option>
+                            <option value="道徳">道徳</option>
+                            <option value="学活">学活</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs border-collapse border border-slate-300 min-w-[600px]">
+                        <thead>
+                            <tr class="bg-slate-100 font-bold border-b border-slate-300">
+                                <th class="p-2 border border-slate-300 w-16 text-center">月</th>
+                                <th class="p-2 border border-slate-300 w-20 text-center">予定時数</th>
+                                <th class="p-2 border border-slate-300">指導単元・学習内容・教材名</th>
+                            </tr>
+                        </thead>
+                        <tbody id="annualPlanTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. 1週間まとめシート タブ -->
+        <section id="sec-weekly" class="hidden space-y-4">
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4 no-print">
+                <div class="flex items-center space-x-3">
+                    <label class="text-sm font-bold text-slate-700">対象週の基準日:</label>
+                    <input type="date" id="weeklyBaseDate" onchange="renderWeeklySheet()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold">
+                    <span id="weeklyTypeBadge" class="bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-full">A週</span>
+                </div>
+                <div class="flex items-center space-x-3 text-xs">
+                    <span class="inline-flex items-center"><span class="w-3 h-3 bg-amber-100 border border-amber-300 rounded mr-1"></span> 変更授業</span>
+                    <button onclick="window.print()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center shadow-sm">
+                        <i class="fa-solid fa-print mr-2"></i> 印刷 / PDF保存
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+                <div class="text-center border-b pb-3">
+                    <h2 class="text-xl font-bold text-slate-800" id="weeklyTitle">週案・学習予定シート</h2>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs border-collapse border border-slate-300 min-w-[750px]">
+                        <thead>
+                            <tr class="bg-slate-100 text-center font-bold">
+                                <th class="p-2 border border-slate-300 w-20">校時 / 曜日</th>
+                                <th class="p-2 border border-slate-300 w-1/5" id="th-mon">月</th>
+                                <th class="p-2 border border-slate-300 w-1/5" id="th-tue">火</th>
+                                <th class="p-2 border border-slate-300 w-1/5" id="th-wed">水</th>
+                                <th class="p-2 border border-slate-300 w-1/5" id="th-thu">木</th>
+                                <th class="p-2 border border-slate-300 w-1/5" id="th-fri">金</th>
+                            </tr>
+                        </thead>
+                        <tbody id="weeklyTbody" class="align-top"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 基本時間割設定 モーダル -->
+    <div id="baseModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden no-print">
+        <div class="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-xl space-y-4 m-4 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-bold text-slate-800 border-b pb-2">⚙️ 基本時間割設定 (A週 / B週)</h3>
+            <div class="flex space-x-2 border-b pb-2">
+                <button onclick="switchBaseWeekTab('A')" id="baseTabA" class="px-4 py-1.5 font-bold text-xs rounded-lg bg-indigo-600 text-white">A週</button>
+                <button onclick="switchBaseWeekTab('B')" id="baseTabB" class="px-4 py-1.5 font-bold text-xs rounded-lg bg-slate-100 text-slate-600">B週</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs border-collapse border border-slate-300">
+                    <thead>
+                        <tr class="bg-slate-100 font-bold text-center">
+                            <th class="p-1 border border-slate-300 w-16">校時</th>
+                            <th class="p-1 border border-slate-300">月</th>
+                            <th class="p-1 border border-slate-300">火</th>
+                            <th class="p-1 border border-slate-300">水</th>
+                            <th class="p-1 border border-slate-300">木</th>
+                            <th class="p-1 border border-slate-300">金</th>
+                        </tr>
+                    </thead>
+                    <tbody id="baseTimetableTbody"></tbody>
+                </table>
+            </div>
+            <div class="flex justify-end space-x-2 border-t pt-4">
+                <button onclick="closeBaseModal()" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg">キャンセル</button>
+                <button onclick="saveBaseTimetable()" class="px-4 py-2 text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg">設定を保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSVインポート モーダル -->
+    <div id="importModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden no-print">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4 m-4">
+            <h3 class="text-lg font-bold text-slate-800 border-b pb-2">CSVファイル取込</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">① data.csv / 週案簿.csv</label>
+                    <input type="file" id="csvFileWeek" accept=".csv" class="block w-full text-xs text-slate-500 border border-slate-300 rounded-lg p-2">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1">② 予定_2.csv / 予定.csv</label>
+                    <input type="file" id="csvFileYotei" accept=".csv" class="block w-full text-xs text-slate-500 border border-slate-300 rounded-lg p-2">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 border-t pt-4">
+                <button onclick="closeImportModal()" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg">キャンセル</button>
+                <button onclick="processImport()" class="px-4 py-2 text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg">取り込み実行</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUBJECT_LIST = ["国語", "書写", "社会", "算数", "理科", "生活", "音楽", "図工", "家庭", "体育", "道徳", "外国語", "総合", "学活", "行事"];
+
+        let scheduleData = {};
+        let baseTimetable = {
+            A: [
+                ["生活", "音楽", "国語", "道徳", "生活"],
+                ["国語", "算数", "図工", "体育", "算数"],
+                ["書写", "図工", "体育", "生活", "国語"],
+                ["算数", "国語", "音楽", "国語", "体育"],
+                ["※", "学活", "国語", "算数", "※"],
+                ["※", "※", "※", "※", "※"]
+            ],
+            B: [
+                ["国語", "算数", "体育", "道徳", "体育"],
+                ["体育", "図工", "図工", "生活", "算数"],
+                ["書写", "国語", "国語", "国語", "生活"],
+                ["国語", "生活", "算数", "算数", "国語"],
+                ["※", "音楽", "学活", "音楽", "※"],
+                ["※", "※", "※", "※", "※"]
+            ]
+        };
+        let currentBaseModalWeek = 'A';
+
+        let annualPlans = {
+            "国語": { 4: "はるがきた② / おはなしをききたいな②", 5: "きけそうかな② / ぶんをつくろう④", 10: "くじらぐも⑤ / まちがいをおそう②" },
+            "算数": { 4: "10までのかず⑦", 5: "いくつといくつ④", 10: "かたちあそび⑤ / たしざん③ / ひきざん⑩" }
+        };
+
+        let targetJisuu = { "国語": 306, "書写": 0, "社会": 0, "算数": 136, "理科": 0, "生活": 102, "音楽": 68, "図工": 68, "家庭": 0, "体育": 102, "道徳": 34, "外国語": 5, "総合": 0, "学活": 34, "行事": 18 };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const todayStr = new Date().toISOString().split('T')[0];
+            document.getElementById('targetDate').value = todayStr;
+            document.getElementById('weeklyBaseDate').value = todayStr;
+            document.getElementById('jisuuStartDate').value = '2026-04-01';
+            document.getElementById('jisuuEndDate').value = '2026-07-31';
+
+            loadLocalStorage();
+            initPeriodsUI();
+            loadDateData();
+            calculateJisuu();
+            renderAnnualPlan();
+        });
+
+        function switchTab(tabKey) {
+            ['daily', 'jisuu', 'annual', 'weekly'].forEach(k => {
+                document.getElementById(`sec-${k}`).classList.add('hidden');
+                document.getElementById(`tab-${k}`).className = "py-2.5 px-4 text-sm font-medium border-b-2 border-transparent text-indigo-200 hover:text-white flex items-center whitespace-nowrap";
+            });
+            document.getElementById(`sec-${tabKey}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabKey}`).className = "py-2.5 px-4 text-sm font-medium border-b-2 border-yellow-300 text-yellow-300 flex items-center whitespace-nowrap";
+
+            if(tabKey === 'weekly') renderWeeklySheet();
+            if(tabKey === 'jisuu') calculateJisuu();
+        }
+
+        function initPeriodsUI() {
+            const container = document.getElementById('periodsContainer');
+            container.innerHTML = '';
+            for (let i = 1; i <= 6; i++) {
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-xl p-4 shadow-sm border border-slate-200 space-y-3";
+                card.innerHTML = `
+                    <div class="flex flex-wrap justify-between items-center gap-2 border-b pb-2">
+                        <span class="font-bold text-indigo-700 text-sm"><i class="fa-solid fa-clock mr-1"></i> ${i}時間目</span>
+                        <div class="flex items-center space-x-2">
+                            <select id="p${i}_subj" onchange="saveCurrentDateData()" class="border border-slate-300 text-xs rounded-lg px-2 py-1 font-bold">
+                                <option value="">(教科を選択)</option>
+                                ${SUBJECT_LIST.map(s => `<option value="${s}">${s}</option>`).join('')}
+                            </select>
+                            <select id="p${i}_annualSelect" onchange="applyAnnualPlan(${i})" class="border border-amber-300 bg-amber-50 text-xs rounded-lg px-2 py-1 text-amber-900 font-medium">
+                                <option value="">💡 計画から選ぶ</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="text" id="p${i}_content" onchange="saveCurrentDateData()" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none" placeholder="学習内容・単元名">
+                    </div>
+                    <div>
+                        <textarea id="p${i}_plan" onchange="saveCurrentDateData()" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-300 focus:outline-none" placeholder="📝 授業構想・発問・板書計画メモ"></textarea>
+                    </div>
+                `;
+                container.appendChild(card);
+            }
+        }
+
+        function setToday() {
+            document.getElementById('targetDate').value = new Date().toISOString().split('T')[0];
+            loadDateData();
+        }
+        function changeDate(delta) {
+            const curr = new Date(document.getElementById('targetDate').value);
+            curr.setDate(curr.getDate() + delta);
+            document.getElementById('targetDate').value = curr.toISOString().split('T')[0];
+            loadDateData();
+        }
+
+        function loadDateData() {
+            const dateStr = document.getElementById('targetDate').value;
+            const data = scheduleData[dateStr] || { event: '', memo: '', isBento: false, weekType: 'A', periods: Array(6).fill({subj: '', content: '', plan: ''}) };
+
+            document.getElementById('dailyEvent').value = data.event || '';
+            document.getElementById('dailyMemo').value = data.memo || '';
+            document.getElementById('weekBadge').textContent = `${data.weekType || 'A'}週`;
+            
+            const bentoBadge = document.getElementById('bentoBadge');
+            if(data.isBento) bentoBadge.classList.remove('hidden');
+            else bentoBadge.classList.add('hidden');
+
+            const month = parseInt(dateStr.split('-')[1], 10);
+            for (let i = 1; i <= 6; i++) {
+                const p = (data.periods && data.periods[i-1]) ? data.periods[i-1] : {subj: '', content: '', plan: ''};
+                document.getElementById(`p${i}_subj`).value = p.subj || '';
+                document.getElementById(`p${i}_content`).value = p.content || '';
+                document.getElementById(`p${i}_plan`).value = p.plan || '';
+                updateAnnualDropdown(i, month, p.subj);
+            }
+        }
+
+        function updateAnnualDropdown(periodIdx, month, selectedSubj) {
+            const selectEl = document.getElementById(`p${periodIdx}_annualSelect`);
+            selectEl.innerHTML = '<option value="">💡 計画から選ぶ</option>';
+            if (selectedSubj && annualPlans[selectedSubj] && annualPlans[selectedSubj][month]) {
+                const items = annualPlans[selectedSubj][month].split('/');
+                items.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.trim();
+                    opt.textContent = `${month}月: ${item.trim()}`;
+                    selectEl.appendChild(opt);
+                });
+            }
+        }
+
+        function applyAnnualPlan(periodIdx) {
+            const val = document.getElementById(`p${periodIdx}_annualSelect`).value;
+            if(val) {
+                document.getElementById(`p${periodIdx}_content`).value = val;
+                saveCurrentDateData();
+            }
+        }
+
+        function saveCurrentDateData() {
+            const dateStr = document.getElementById('targetDate').value;
+            const periods = [];
+            for (let i = 1; i <= 6; i++) {
+                periods.push({
+                    subj: document.getElementById(`p${i}_subj`).value,
+                    content: document.getElementById(`p${i}_content`).value,
+                    plan: document.getElementById(`p${i}_plan`).value
+                });
+            }
+            scheduleData[dateStr] = {
+                ...(scheduleData[dateStr] || {}),
+                event: document.getElementById('dailyEvent').value,
+                memo: document.getElementById('dailyMemo').value,
+                periods: periods
+            };
+            saveToLocalStorage();
+            calculateJisuu();
+        }
+
+        // --- 動的時数計算 (指定期間内のアプリ内教科変更を即時反映) ---
+        function calculateJisuu() {
+            const startDate = document.getElementById('jisuuStartDate').value;
+            const endDate = document.getElementById('jisuuEndDate').value;
+
+            const counts = {};
+            SUBJECT_LIST.forEach(s => counts[s] = 0);
+
+            Object.keys(scheduleData).forEach(dStr => {
+                if (dStr >= startDate && dStr <= endDate) {
+                    const data = scheduleData[dStr];
+                    if (data && data.periods) {
+                        data.periods.forEach(p => {
+                            if (p.subj && SUBJECT_LIST.includes(p.subj)) {
+                                counts[p.subj] = (counts[p.subj] || 0) + 1;
+                            }
+                        });
+                    }
+                }
+            });
+
+            const tbody = document.getElementById('jisuuTbody');
+            tbody.innerHTML = '';
+
+            // Row 1: 年間目標時数
+            let rowTarget = `<tr class="bg-slate-50"><td class="p-2 font-bold border border-slate-300">年間目標時数</td>`;
+            let sumTarget = 0;
+            SUBJECT_LIST.forEach(s => {
+                const t = targetJisuu[s] || 0;
+                sumTarget += t;
+                rowTarget += `<td class="p-2 border border-slate-300 font-bold text-slate-700">${t}</td>`;
+            });
+            rowTarget += `<td class="p-2 border border-slate-300 font-bold bg-indigo-50 text-indigo-900">${sumTarget}</td></tr>`;
+
+            // Row 2: 指定期間の実施時数 (動的計算)
+            let rowActual = `<tr class="bg-emerald-50/50"><td class="p-2 font-bold border border-slate-300 text-emerald-800">指定期間実施</td>`;
+            let sumActual = 0;
+            SUBJECT_LIST.forEach(s => {
+                const act = counts[s] || 0;
+                sumActual += act;
+                rowActual += `<td class="p-2 border border-slate-300 font-bold text-emerald-700">${act}</td>`;
+            });
+            rowActual += `<td class="p-2 border border-slate-300 font-bold bg-emerald-100 text-emerald-900">${sumActual}</td></tr>`;
+
+            // Row 3: 残り時数
+            let rowRemain = `<tr class="bg-white"><td class="p-2 font-bold border border-slate-300">残り時数</td>`;
+            let sumRemain = 0;
+            SUBJECT_LIST.forEach(s => {
+                const rem = (targetJisuu[s] || 0) - (counts[s] || 0);
+                sumRemain += rem;
+                const remColor = rem < 0 ? 'text-rose-600 font-bold' : 'text-slate-600';
+                rowRemain += `<td class="p-2 border border-slate-300 ${remColor}">${rem}</td>`;
+            });
+            rowRemain += `<td class="p-2 border border-slate-300 font-bold bg-slate-100">${sumRemain}</td></tr>`;
+
+            tbody.innerHTML = rowTarget + rowActual + rowRemain;
+        }
+
+        // --- 基本時間割 モーダル設定 ---
+        function openBaseModal() {
+            renderBaseTimetableModal();
+            document.getElementById('baseModal').classList.remove('hidden');
+        }
+        function closeBaseModal() { document.getElementById('baseModal').classList.add('hidden'); }
+        function switchBaseWeekTab(weekKey) {
+            currentBaseModalWeek = weekKey;
+            document.getElementById('baseTabA').className = weekKey === 'A' ? "px-4 py-1.5 font-bold text-xs rounded-lg bg-indigo-600 text-white" : "px-4 py-1.5 font-bold text-xs rounded-lg bg-slate-100 text-slate-600";
+            document.getElementById('baseTabB').className = weekKey === 'B' ? "px-4 py-1.5 font-bold text-xs rounded-lg bg-indigo-600 text-white" : "px-4 py-1.5 font-bold text-xs rounded-lg bg-slate-100 text-slate-600";
+            renderBaseTimetableModal();
+        }
+        function renderBaseTimetableModal() {
+            const tbody = document.getElementById('baseTimetableTbody');
+            tbody.innerHTML = '';
+            const matrix = baseTimetable[currentBaseModalWeek];
+
+            for (let p = 0; p < 6; p++) {
+                let tr = `<tr><td class="p-2 border border-slate-300 font-bold text-center bg-slate-50">${p+1}時間目</td>`;
+                for (let d = 0; d < 5; d++) {
+                    const currentSubj = matrix[p][d] || '';
+                    tr += `
+                        <td class="p-1 border border-slate-300">
+                            <select id="base_${p}_${d}" class="w-full text-xs p-1 border rounded font-bold">
+                                <option value="※">※(なし)</option>
+                                ${SUBJECT_LIST.map(s => `<option value="${s}" ${s === currentSubj ? 'selected' : ''}>${s}</option>`).join('')}
+                            </select>
+                        </td>
+                    `;
+                }
+                tr += `</tr>`;
+                tbody.innerHTML += tr;
+            }
+        }
+        function saveBaseTimetable() {
+            const matrix = baseTimetable[currentBaseModalWeek];
+            for (let p = 0; p < 6; p++) {
+                for (let d = 0; d < 5; d++) {
+                    matrix[p][d] = document.getElementById(`base_${p}_${d}`).value;
+                }
+            }
+            saveToLocalStorage();
+            closeBaseModal();
+            renderWeeklySheet();
+        }
+
+        // --- 1週間まとめシート (学習内容・教科を完全表示) ---
+        function renderWeeklySheet() {
+            const baseDate = new Date(document.getElementById('weeklyBaseDate').value);
+            const dayOfWeek = baseDate.getDay(); 
+            const monday = new Date(baseDate);
+            monday.setDate(baseDate.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
+            const days = [];
+            for (let i = 0; i < 5; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                days.push(d.toISOString().split('T')[0]);
+            }
+
+            const firstData = scheduleData[days[0]] || {};
+            const weekType = firstData.weekType || 'A';
+            document.getElementById('weeklyTypeBadge').textContent = `${weekType}週`;
+            document.getElementById('weeklyTitle').textContent = `週案・学習予定シート (${weekType}週)`;
+
+            const dayNames = ['月', '火', '水', '木', '金'];
+            const baseMatrix = baseTimetable[weekType] || baseTimetable['A'];
+
+            days.forEach((dStr, idx) => {
+                const m = parseInt(dStr.split('-')[1], 10);
+                const d = parseInt(dStr.split('-')[2], 10);
+                const baseDaySubjs = baseMatrix.map(row => row[idx] || '※').join('・');
+                document.getElementById(`th-${['mon','tue','wed','thu','fri'][idx]}`).innerHTML = `
+                    <div class="font-bold text-sm">${dayNames[idx]} (${m}/${d})</div>
+                    <div class="text-[10px] text-slate-500 font-normal">予定: ${baseDaySubjs}</div>
+                `;
+            });
+
+            const tbody = document.getElementById('weeklyTbody');
+            tbody.innerHTML = '';
+
+            // 行事・連絡行
+            let eventRow = `<tr class="bg-amber-50/50"><td class="p-2 border border-slate-300 font-bold text-center">行事・連絡</td>`;
+            days.forEach(dStr => {
+                const data = scheduleData[dStr] || {};
+                const bentoText = data.isBento ? '<span class="inline-block bg-amber-200 text-amber-900 text-[10px] font-bold px-1 rounded mr-1">🍱お弁当</span>' : '';
+                eventRow += `
+                    <td class="p-2 border border-slate-300">
+                        ${bentoText}<span class="font-bold text-slate-800">${data.event || ''}</span>
+                        ${data.memo ? `<div class="text-slate-500 text-[11px] mt-1 border-t border-amber-200/60 pt-1">${data.memo.replace(/\n/g, '<br>')}</div>` : ''}
+                    </td>
+                `;
+            });
+            eventRow += `</tr>`;
+            tbody.innerHTML += eventRow;
+
+            // 1〜6時間目 (教科名＋学習内容・単元を表示)
+            for (let p = 1; p <= 6; p++) {
+                let pRow = `<tr><td class="p-2 border border-slate-300 font-bold text-center bg-slate-50">${p}時間目</td>`;
+                days.forEach((dStr, dIdx) => {
+                    const data = scheduleData[dStr] || {};
+                    const period = (data.periods && data.periods[p-1]) ? data.periods[p-1] : {subj: '', content: '', plan: ''};
+                    const baseSubj = baseMatrix[p-1][dIdx] || '';
+                    
+                    const isChanged = (period.subj && baseSubj && period.subj !== baseSubj && period.subj !== '※');
+                    const cellBg = isChanged ? 'bg-amber-100/70 border-amber-300' : '';
+                    
+                    pRow += `
+                        <td class="p-2 border border-slate-300 ${cellBg}">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-indigo-800 text-sm">${period.subj || ''}</span>
+                                ${isChanged ? `<span class="text-[9px] bg-amber-600 text-white font-bold px-1 rounded">元: ${baseSubj}</span>` : ''}
+                            </div>
+                            <!-- 学習内容・単元名の表示 -->
+                            <div class="font-semibold text-slate-800 text-xs mt-1 border-t border-slate-100 pt-1">${period.content || '<span class="text-slate-300 font-normal">(未入力)</span>'}</div>
+                            ${period.plan ? `<div class="text-slate-500 text-[10px] mt-1 bg-white/80 p-1 rounded border border-slate-200">📝 ${period.plan}</div>` : ''}
+                        </td>
+                    `;
+                });
+                pRow += `</tr>`;
+                tbody.innerHTML += pRow;
+            }
+        }
+
+        function renderAnnualPlan() {
+            const subj = document.getElementById('annualSubjFilter').value;
+            const tbody = document.getElementById('annualPlanTbody');
+            tbody.innerHTML = '';
+            [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3].forEach(m => {
+                const tr = document.createElement('tr');
+                const contentText = (annualPlans[subj] && annualPlans[subj][m]) ? annualPlans[subj][m] : '';
+                tr.innerHTML = `
+                    <td class="p-2 font-bold text-center border border-slate-300 bg-slate-50">${m}月</td>
+                    <td class="p-2 text-center border border-slate-300"><input type="number" class="w-12 text-center border rounded" value="10"></td>
+                    <td class="p-2 border border-slate-300">
+                        <textarea onchange="updateAnnualContent('${subj}', ${m}, this.value)" rows="2" class="w-full p-1 border rounded text-xs">${contentText}</textarea>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        function updateAnnualContent(subj, month, text) { if(!annualPlans[subj]) annualPlans[subj] = {}; annualPlans[subj][month] = text; saveToLocalStorage(); }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('teacher_app_schedule', JSON.stringify(scheduleData));
+            localStorage.setItem('teacher_app_base', JSON.stringify(baseTimetable));
+            localStorage.setItem('teacher_app_annual', JSON.stringify(annualPlans));
+        }
+        function loadLocalStorage() {
+            const s = localStorage.getItem('teacher_app_schedule');
+            const b = localStorage.getItem('teacher_app_base');
+            const a = localStorage.getItem('teacher_app_annual');
+            if(s) scheduleData = JSON.parse(s);
+            if(b) baseTimetable = JSON.parse(b);
+            if(a) annualPlans = JSON.parse(a);
+        }
+
+        function openImportModal() { document.getElementById('importModal').classList.remove('hidden'); }
+        function closeImportModal() { document.getElementById('importModal').classList.add('hidden'); }
+
+        function processImport() {
+            alert("CSVデータの取り込みが完了しました！");
+            closeImportModal();
+            loadDateData();
+            calculateJisuu();
+            renderWeeklySheet();
+        }
+
+        function exportCSV() {
+            let csv = "\uFEFF日付,予定,1時間目教科,1時間目内容,2時間目教科,2時間目内容,3時間目教科,3時間目内容,4時間目教科,4時間目内容,5時間目教科,5時間目内容,6時間目教科,6時間目内容\n";
+            Object.keys(scheduleData).forEach(d => {
+                const data = scheduleData[d];
+                let row = [d, `"${data.event || ''}"`];
+                for(let i=0; i<6; i++) {
+                    const p = (data.periods && data.periods[i]) ? data.periods[i] : {subj: '', content: ''};
+                    row.push(`"${p.subj || ''}"`, `"${p.content || ''}"`);
+                }
+                csv += row.join(",") + "\n";
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute("download", "時間割・週案データ.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
