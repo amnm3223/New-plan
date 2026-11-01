@@ -14,6 +14,7 @@
             .page-break { page-break-before: always; }
             .print-card { border: 1px solid #ccc !important; box-shadow: none !important; }
             table { font-size: 10px !important; }
+            select, input, textarea { border: none !important; background: transparent !important; appearance: none !important; }
         }
         .print-only { display: none; }
     </style>
@@ -103,14 +104,13 @@
             </div>
         </section>
 
-        <!-- 2. 時数管理・実績 タブ (期間指定自動動的集計) -->
+        <!-- 2. 時数管理・集計 タブ (C打ち切り対応・自動動的集計) -->
         <section id="sec-jisuu" class="hidden space-y-4">
             <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-200 space-y-4">
                 <div class="flex flex-wrap justify-between items-center gap-4 border-b pb-3">
                     <h2 class="font-bold text-slate-800 text-lg flex items-center">
                         <i class="fa-solid fa-calculator text-indigo-600 mr-2"></i>指定期間の授業時数自動計算
                     </h2>
-                    <!-- 期間指定コントロール -->
                     <div class="flex flex-wrap items-center gap-2 bg-indigo-50/70 p-2 rounded-xl border border-indigo-100">
                         <label class="text-xs font-bold text-indigo-900"><i class="fa-solid fa-filter mr-1"></i>集計期間:</label>
                         <input type="date" id="jisuuStartDate" onchange="calculateJisuu()" class="border border-slate-300 text-xs rounded-lg px-2 py-1 font-bold">
@@ -121,11 +121,11 @@
                 </div>
 
                 <p class="text-xs text-slate-500">
-                    💡 アプリ上で時間割を変更（例：国語から算数へ変更）すると、指定期間内の実施時数が自動的に即時計算・カウントされます。
+                    💡 アプリ上で教科を変更したり「C(打ち切り)」を入れると、指定期間内の実施時数がリアルタイムでカウント・更新されます。
                 </p>
 
                 <div class="overflow-x-auto">
-                    <table class="w-full text-xs text-center border-collapse border border-slate-300 min-w-[800px]">
+                    <table class="w-full text-xs text-center border-collapse border border-slate-300 min-w-[850px]">
                         <thead>
                             <tr class="bg-slate-100 font-bold border-b border-slate-300">
                                 <th class="p-2 border border-slate-300">区分</th>
@@ -143,6 +143,7 @@
                                 <th class="p-2 border border-slate-300">外国語</th>
                                 <th class="p-2 border border-slate-300">総合</th>
                                 <th class="p-2 border border-slate-300">学活</th>
+                                <th class="p-2 border border-slate-300 bg-amber-50 text-amber-900">C(打ち切り)</th>
                                 <th class="p-2 border border-slate-300">行事</th>
                                 <th class="p-2 border border-slate-300 bg-indigo-50">合計</th>
                             </tr>
@@ -190,7 +191,7 @@
             </div>
         </section>
 
-        <!-- 4. 1週間まとめシート タブ -->
+        <!-- 4. 1週間まとめシート タブ (直接編集対応) -->
         <section id="sec-weekly" class="hidden space-y-4">
             <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4 no-print">
                 <div class="flex items-center space-x-3">
@@ -283,7 +284,7 @@
     </div>
 
     <script>
-        const SUBJECT_LIST = ["国語", "書写", "社会", "算数", "理科", "生活", "音楽", "図工", "家庭", "体育", "道徳", "外国語", "総合", "学活", "行事"];
+        const SUBJECT_LIST = ["国語", "書写", "社会", "算数", "理科", "生活", "音楽", "図工", "家庭", "体育", "道徳", "外国語", "総合", "学活", "C(打ち切り)", "行事"];
 
         let scheduleData = {};
         let baseTimetable = {
@@ -311,7 +312,7 @@
             "算数": { 4: "10までのかず⑦", 5: "いくつといくつ④", 10: "かたちあそび⑤ / たしざん③ / ひきざん⑩" }
         };
 
-        let targetJisuu = { "国語": 306, "書写": 0, "社会": 0, "算数": 136, "理科": 0, "生活": 102, "音楽": 68, "図工": 68, "家庭": 0, "体育": 102, "道徳": 34, "外国語": 5, "総合": 0, "学活": 34, "行事": 18 };
+        let targetJisuu = { "国語": 306, "書写": 0, "社会": 0, "算数": 136, "理科": 0, "生活": 102, "音楽": 68, "図工": 68, "家庭": 0, "体育": 102, "道徳": 34, "外国語": 5, "総合": 0, "学活": 34, "C(打ち切り)": 0, "行事": 18 };
 
         window.addEventListener('DOMContentLoaded', () => {
             const todayStr = new Date().toISOString().split('T')[0];
@@ -444,7 +445,21 @@
             calculateJisuu();
         }
 
-        // --- 動的時数計算 (指定期間内のアプリ内教科変更を即時反映) ---
+        // --- 1週間まとめシート用直接編集反映 ---
+        function updateWeeklyPeriod(dStr, pIdx, field, value) {
+            if (!scheduleData[dStr]) {
+                scheduleData[dStr] = { event: '', memo: '', isBento: false, weekType: 'A', periods: Array(6).fill({subj: '', content: '', plan: ''}) };
+            }
+            if (!scheduleData[dStr].periods) {
+                scheduleData[dStr].periods = Array(6).fill({subj: '', content: '', plan: ''});
+            }
+            scheduleData[dStr].periods[pIdx][field] = value;
+            saveToLocalStorage();
+            calculateJisuu();
+            renderWeeklySheet();
+        }
+
+        // --- 動的時数計算 (C打ち切り対応) ---
         function calculateJisuu() {
             const startDate = document.getElementById('jisuuStartDate').value;
             const endDate = document.getElementById('jisuuEndDate').value;
@@ -457,8 +472,14 @@
                     const data = scheduleData[dStr];
                     if (data && data.periods) {
                         data.periods.forEach(p => {
-                            if (p.subj && SUBJECT_LIST.includes(p.subj)) {
-                                counts[p.subj] = (counts[p.subj] || 0) + 1;
+                            if (p.subj) {
+                                let normSubj = p.subj;
+                                if (normSubj === 'C' || normSubj === 'カウンター' || normSubj === '打ち切り') {
+                                    normSubj = 'C(打ち切り)';
+                                }
+                                if (SUBJECT_LIST.includes(normSubj)) {
+                                    counts[normSubj] = (counts[normSubj] || 0) + 1;
+                                }
                             }
                         });
                     }
@@ -468,7 +489,6 @@
             const tbody = document.getElementById('jisuuTbody');
             tbody.innerHTML = '';
 
-            // Row 1: 年間目標時数
             let rowTarget = `<tr class="bg-slate-50"><td class="p-2 font-bold border border-slate-300">年間目標時数</td>`;
             let sumTarget = 0;
             SUBJECT_LIST.forEach(s => {
@@ -478,7 +498,6 @@
             });
             rowTarget += `<td class="p-2 border border-slate-300 font-bold bg-indigo-50 text-indigo-900">${sumTarget}</td></tr>`;
 
-            // Row 2: 指定期間の実施時数 (動的計算)
             let rowActual = `<tr class="bg-emerald-50/50"><td class="p-2 font-bold border border-slate-300 text-emerald-800">指定期間実施</td>`;
             let sumActual = 0;
             SUBJECT_LIST.forEach(s => {
@@ -488,7 +507,6 @@
             });
             rowActual += `<td class="p-2 border border-slate-300 font-bold bg-emerald-100 text-emerald-900">${sumActual}</td></tr>`;
 
-            // Row 3: 残り時数
             let rowRemain = `<tr class="bg-white"><td class="p-2 font-bold border border-slate-300">残り時数</td>`;
             let sumRemain = 0;
             SUBJECT_LIST.forEach(s => {
@@ -502,11 +520,7 @@
             tbody.innerHTML = rowTarget + rowActual + rowRemain;
         }
 
-        // --- 基本時間割 モーダル設定 ---
-        function openBaseModal() {
-            renderBaseTimetableModal();
-            document.getElementById('baseModal').classList.remove('hidden');
-        }
+        function openBaseModal() { renderBaseTimetableModal(); document.getElementById('baseModal').classList.remove('hidden'); }
         function closeBaseModal() { document.getElementById('baseModal').classList.add('hidden'); }
         function switchBaseWeekTab(weekKey) {
             currentBaseModalWeek = weekKey;
@@ -548,7 +562,6 @@
             renderWeeklySheet();
         }
 
-        // --- 1週間まとめシート (学習内容・教科を完全表示) ---
         function renderWeeklySheet() {
             const baseDate = new Date(document.getElementById('weeklyBaseDate').value);
             const dayOfWeek = baseDate.getDay(); 
@@ -583,7 +596,6 @@
             const tbody = document.getElementById('weeklyTbody');
             tbody.innerHTML = '';
 
-            // 行事・連絡行
             let eventRow = `<tr class="bg-amber-50/50"><td class="p-2 border border-slate-300 font-bold text-center">行事・連絡</td>`;
             days.forEach(dStr => {
                 const data = scheduleData[dStr] || {};
@@ -598,7 +610,6 @@
             eventRow += `</tr>`;
             tbody.innerHTML += eventRow;
 
-            // 1〜6時間目 (教科名＋学習内容・単元を表示)
             for (let p = 1; p <= 6; p++) {
                 let pRow = `<tr><td class="p-2 border border-slate-300 font-bold text-center bg-slate-50">${p}時間目</td>`;
                 days.forEach((dStr, dIdx) => {
@@ -611,12 +622,14 @@
                     
                     pRow += `
                         <td class="p-2 border border-slate-300 ${cellBg}">
-                            <div class="flex items-center justify-between">
-                                <span class="font-bold text-indigo-800 text-sm">${period.subj || ''}</span>
-                                ${isChanged ? `<span class="text-[9px] bg-amber-600 text-white font-bold px-1 rounded">元: ${baseSubj}</span>` : ''}
+                            <div class="flex items-center justify-between gap-1 mb-1">
+                                <select onchange="updateWeeklyPeriod('${dStr}', ${p-1}, 'subj', this.value)" class="font-bold text-indigo-800 text-xs bg-transparent border-none focus:outline-none cursor-pointer">
+                                    <option value="">(選択)</option>
+                                    ${SUBJECT_LIST.map(s => `<option value="${s}" ${s === period.subj ? 'selected' : ''}>${s}</option>`).join('')}
+                                </select>
+                                ${isChanged ? `<span class="text-[9px] bg-amber-600 text-white font-bold px-1 rounded whitespace-nowrap">元: ${baseSubj}</span>` : ''}
                             </div>
-                            <!-- 学習内容・単元名の表示 -->
-                            <div class="font-semibold text-slate-800 text-xs mt-1 border-t border-slate-100 pt-1">${period.content || '<span class="text-slate-300 font-normal">(未入力)</span>'}</div>
+                            <input type="text" value="${period.content || ''}" onchange="updateWeeklyPeriod('${dStr}', ${p-1}, 'content', this.value)" class="w-full font-semibold text-slate-800 text-xs bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-indigo-500" placeholder="学習内容">
                             ${period.plan ? `<div class="text-slate-500 text-[10px] mt-1 bg-white/80 p-1 rounded border border-slate-200">📝 ${period.plan}</div>` : ''}
                         </td>
                     `;
